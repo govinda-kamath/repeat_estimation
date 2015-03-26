@@ -9,7 +9,7 @@ class Kmer(object):
     Kmers added.
     '''
     kmer_dict={}
-    K=5
+#     K=5
 
 
     def __init__(self, kmer_bases):
@@ -36,7 +36,7 @@ class Kmer(object):
         if kmer_suffix not in Kmer.kmer_dict:
             Kmer.kmer_dict[kmer_suffix] = Node(kmer_suffix)
         
-        Kmer.kmer_dict[kmer_prefix].link_to(Kmer.kmer_dict[kmer_suffix], Kmer.K-1)
+        Kmer.kmer_dict[kmer_prefix].link_to(Kmer.kmer_dict[kmer_suffix], Kmer.K-2)
 
         
        
@@ -116,17 +116,37 @@ class Node(object):
         g.close()
         f.close()
         h.close()    
+        ed.close()
         
     @staticmethod
-    def collapse():
+    def condense_graph():
+        '''Condense the graph'''
+        no_condensed=0
+        for in_node in Node.nodes:
+#             print 'in outer loop'+in_node.bases
+#             print str(in_node.out_degree())
+            if  not hasattr(in_node, 'destroyed'):
+                if in_node.out_degree()==1 and in_node.out_edges[0].out_node.in_degree()==1:
+                    no_condensed+=1
+                    in_node.destroyed=True
+                    in_node.out_edges[0].out_node.destroyed=True
+#                     print in_node.bases
+                    in_node.out_edges[0].condense()
         
-        pass
+        #Nodes not removed from the list while looping so that the loop invariant is not disturbed.
+        Node.remove_destroyed()
+        return no_condensed
         
+    @staticmethod
+    def remove_destroyed():
+        Node.nodes=[x for x in Node.nodes if not hasattr(x, 'destroyed')]
+    
+
         
 class Edge(object):
     """An edge between nodes.
     """
-    edges=[]
+    edges=set()
 
     def __init__(self, weight, in_node, out_node):
         self.in_node = in_node
@@ -135,7 +155,7 @@ class Edge(object):
         self.in_node.out_edges.append(self)
         self.out_node.in_edges.append(self)
         self.traversed = False
-        Edge.edges.append(self)
+        Edge.edges.add(self)
         
     def predecessors(self):
         """Return a generator for SELF's predecessors.
@@ -147,3 +167,58 @@ class Edge(object):
         """
         return (e.out_node for e in self.out_edges)
     
+    def condense(self):
+    
+        '''Condenses and edge with where both the in_node and the out_node have degree 1'''
+#         pass
+        source = self.in_node
+        destination = self.out_node
+        new_bases = source.bases + destination.bases[self.weight:]
+        condensed = Node(new_bases)
+         
+        if source is destination:
+            self.destroy()
+            for edge in list(source.out_edges):
+                new_e = condensed.link_to(edge.out_node, edge.weight)
+                edge.destroy()
+            for edge in list(source.in_edges):
+                new_e = condensed.link_from(edge.in_node, edge.weight)
+                edge.destroy()
+     
+            return condensed
+         
+        for edge in list(source.in_edges):
+            previous_node = edge.in_node
+            previous_node.link_to(condensed, edge.weight)
+            edge.destroy()
+        for edge in list(destination.out_edges):
+            next_node=edge.out_node
+            next_node.link_from(condensed, edge.weight)
+            edge.destroy()
+        
+        self.destroy()
+        return condensed
+#         pass
+        
+        
+    def destroy(self): 
+        ''' Destroy an edge'''
+
+        self.in_node.out_edges.remove(self)
+        self.out_node.in_edges.remove(self)
+        self.in_node = None
+        self.out_node = None
+        Edge.edges.remove(self)
+        
+
+class Reads(object):
+    reads=set()
+    read_len=10
+    
+    @staticmethod
+    def load_reads(file_name):
+        with open (file_name,'r') as read_file:
+            for line in read_file:
+                read=line.strip()
+                assert len(read)==Reads.read_len
+                Reads.reads.add(read)
